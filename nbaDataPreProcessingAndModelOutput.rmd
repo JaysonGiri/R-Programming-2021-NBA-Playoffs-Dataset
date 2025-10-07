@@ -1,0 +1,130 @@
+---
+title: "NBA Players Shooting ML Analysis"
+author: "Sanjay Giri Prakash"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(skimr)
+library(fastDummies)
+library(caret)
+```
+
+## Load and View Data
+```{r}
+nba <- read.csv("/Users/prakashns/Documents/R-Programming/nba_players_shooting.csv")
+head(nba, 6)
+tail(nba, 6)
+
+# Check for missing values
+sum(is.na(nba))
+```
+
+## Data Preprocessing
+```{r}
+# Remove unnecessary column
+nba_new <- nba %>% select(-INDEX)
+
+# One-hot encode categorical columns
+nba_ml <- fastDummies::dummy_cols(
+  nba_new,
+  select_columns = c("SHOOTER", "DEFENDER", "RANGE"),
+  remove_first_dummy = FALSE,
+  remove_selected_columns = TRUE
+)
+
+# Set seed for reproducibility
+set.seed(100)
+
+# Split into training (80%) and testing (20%) sets
+TrainingIndex <- createDataPartition(nba_ml$SCORE, p = 0.8, list = FALSE)
+TrainingSet <- nba_ml[TrainingIndex, ]
+TestingSet <- nba_ml[-TrainingIndex, ]
+
+# Ensure factor levels for target variable
+levels_order <- c("MADE", "MISSED")
+TrainingSet$SCORE <- factor(TrainingSet$SCORE, levels = levels_order)
+TestingSet$SCORE  <- factor(TestingSet$SCORE,  levels = levels_order)
+```
+
+## SVM Model (Polynomial Kernel)
+```{r}
+Model <- train(
+  SCORE ~ .,
+  data = TrainingSet,
+  method = "svmPoly",
+  na.action = na.omit,
+  preProcess = c("scale", "center"),
+  trControl = trainControl(method = "cv", number = 10),
+  tuneLength = 5
+)
+
+# Predictions
+Model.training <- factor(predict(Model, TrainingSet), levels = levels_order)
+Model.testing <- factor(predict(Model, TestingSet), levels = levels_order)
+
+# Confusion matrices
+Model.training.confusion <- confusionMatrix(Model.training, TrainingSet$SCORE)
+Model.testing.confusion <- confusionMatrix(Model.testing, TestingSet$SCORE)
+
+Model.training.confusion
+Model.testing.confusion
+```
+
+## Random Forest Model
+```{r}
+Model_rf <- train(
+  SCORE ~ ., 
+  data = TrainingSet, 
+  method = "rf",
+  trControl = trainControl(method = "cv", number = 10),
+  tuneLength = 5
+)
+
+# Predictions
+Model_rf.training <- predict(Model_rf, TrainingSet)
+Model_rf.testing <- predict(Model_rf, TestingSet)
+
+# Confusion matrices
+Model_rf.training.confusion <- confusionMatrix(Model_rf.training, TrainingSet$SCORE)
+Model_rf.testing.confusion <- confusionMatrix(Model_rf.testing, TestingSet$SCORE)
+
+Model_rf.training.confusion
+Model_rf.testing.confusion
+
+# Feature importance
+Importance_rf <- varImp(Model_rf)
+plot(Importance_rf)
+```
+
+### Neural Network Model
+```{r}
+Model_nnet <- train(
+  SCORE ~ ., 
+  data = TrainingSet,
+  method = "nnet",
+  preProcess = c("center", "scale"),
+  trControl = trainControl(method = "cv", number = 10),
+  tuneLength = 5,
+  trace = FALSE
+)
+
+# Predictions
+Model_nnet.training <- predict(Model_nnet, TrainingSet)
+Model_nnet.testing <- predict(Model_nnet, TestingSet)
+
+# Confusion matrices
+Model_nnet.training.confusion <- confusionMatrix(Model_nnet.training, TrainingSet$SCORE)
+Model_nnet.testing.confusion <- confusionMatrix(Model_nnet.testing, TestingSet$SCORE)
+
+Model_nnet.training.confusion
+Model_nnet.testing.confusion
+
+# Feature importance
+Importance_nnet <- varImp(Model_nnet)
+plot(Importance_nnet)
+```
