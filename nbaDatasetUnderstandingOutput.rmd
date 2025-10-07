@@ -1,0 +1,239 @@
+---
+title: "NBA Players Shooting Analysis"
+author: "Sanjay Giri Prakash"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(skimr)
+```
+
+## Load and View Data
+```{r}
+nba <- read.csv("/Users/prakashns/Documents/R-Programming/nba_players_shooting.csv")
+head(nba, 6)
+tail(nba, 6)
+```
+
+## Summary Statistics 
+```{r} 
+summary(nba) 
+summary(nba$SCORE) 
+
+# Check for missing data 
+sum(is.na(nba)) 
+
+# Detailed summary using skimr 
+skim(nba) 
+
+# Grouped summary by SCORE 
+nba %>% group_by(SCORE) %>% skim() 
+``` 
+
+## Quick Data Visualization 
+### Panel Plot
+```{r} 
+plot(nba, col="red") 
+```
+
+### Scatter Plot: Shot Locations
+```{r}
+ggplot(nba, aes(x = X, y = Y, color = SCORE)) +
+  geom_point() +
+  labs(title = "Shot Location of all players", x = "X Position", y = "Y Position")
+```
+
+### Scatter Plot by Player
+```{r}
+players <- c("Trae Young", "Chris Paul", "Russell Westbrook", "Seth Curry")
+
+for (p in players) {
+  print(
+    nba %>% 
+      filter(SHOOTER == p) %>% 
+      ggplot(aes(x = X, y = Y, color = SCORE)) +
+      geom_point() +
+      labs(title = paste("Shot Location -", p), x = "X Position", y = "Y Position")
+  )
+}
+```
+
+### Bar Graphs: Shot Range Analysis
+```{r}
+ggplot(nba, aes(x = RANGE, fill = SCORE)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Shot Count of Each Range - All Players", x = "Range", y = "Count")
+
+for (p in players) {
+  print(
+    nba %>% 
+      filter(SHOOTER == p) %>% 
+      ggplot(aes(x = RANGE, fill = SCORE)) +
+      geom_bar(position = "dodge") +
+      labs(title = paste("Shot Count of Each Range -", p), x = "Range", y = "Count")
+  )
+}
+```
+
+### Histograms
+```{r}
+hist(nba$X, col = "red")
+
+ggplot(nba, aes(x = Y, color = SHOOTER)) + 
+  geom_histogram() +
+  labs(x = "Y Location")
+```
+
+### Box Plots
+```{r}
+nba_long <- pivot_longer(nba, cols = 3:4, names_to = "Feature", values_to = "Value")
+
+ggplot(nba_long, aes(x = SCORE, y = Value)) +
+  geom_boxplot() +
+  facet_wrap(~Feature, scales = "free_y")
+```
+
+## Analysis Questions
+
+### Best Shooting Position for Each Player
+```{r}
+best_positions <- nba %>% 
+  group_by(SHOOTER, RANGE) %>% 
+  summarise(
+    shots_made = sum(SCORE == "MADE"),
+    total_shots = n(),
+    shooting_percentage = shots_made / total_shots,
+    .groups = "drop"
+  )
+
+best_for_each_player <- best_positions %>% 
+  group_by(SHOOTER) %>% 
+  filter(shooting_percentage == max(shooting_percentage)) %>% 
+  arrange(SHOOTER)
+
+ggplot(best_for_each_player, aes(x = SHOOTER, y = shooting_percentage, fill = RANGE)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Best Shooting Position for Each Player", x = "Player", y = "Shooting Percentage")
+```
+
+### Best Shooter by Range
+```{r}
+best_player_by_range <- best_positions %>% 
+  group_by(RANGE) %>% 
+  filter(shooting_percentage == max(shooting_percentage)) %>% 
+  arrange(RANGE)
+
+ggplot(best_player_by_range, aes(x = RANGE, y = shooting_percentage, fill = SHOOTER)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Best Shooter at Each Range", x = "Range", y = "Shooting Percentage")
+```
+
+### Best Defender
+```{r}
+defensive_stats <- nba %>% 
+  group_by(DEFENDER) %>% 
+  summarise(
+    shots_guarded = n(),
+    shots_made = sum(SCORE == "MADE"),
+    shots_missed = sum(SCORE == "MISSED"),
+    opponent_field_goal_percentage = shots_made / shots_guarded,
+    .groups = "drop"
+  ) %>% 
+  arrange(opponent_field_goal_percentage)
+
+best_defender <- defensive_stats %>% 
+  slice_min(opponent_field_goal_percentage, n = 1)
+
+ggplot(defensive_stats, aes(x = reorder(DEFENDER, opponent_field_goal_percentage), y = opponent_field_goal_percentage)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Opponent Field Goal Percentage by Defender", x = "Defender", y = "Opponent FG%")
+```
+
+### Best Offensive Player
+```{r}
+offensive_stats <- nba %>% 
+  group_by(SHOOTER) %>% 
+  summarise(
+    shots_taken = n(),
+    shots_made = sum(SCORE == "MADE"),
+    field_goal_percentage = shots_made / shots_taken,
+    .groups = "drop"
+  ) %>% 
+  arrange(desc(field_goal_percentage))
+
+top_shooter <- offensive_stats %>% slice_max(field_goal_percentage, n = 1)
+
+ggplot(offensive_stats, aes(x = reorder(SHOOTER, field_goal_percentage), y = field_goal_percentage)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Field Goal Percentage by Shooter", x = "Shooter", y = "Field Goal Percentage")
+```
+
+### Seth Curry vs Each Defender
+```{r}
+seth_defenders_stats <- nba %>% 
+  filter(SHOOTER == "Seth Curry", DEFENDER != "Seth Curry") %>% 
+  group_by(DEFENDER) %>% 
+  summarise(
+    shots_taken = n(),
+    shots_made = sum(SCORE == "MADE"),
+    field_goal_percentage = shots_made / shots_taken,
+    .groups = "drop"
+  ) %>% 
+  arrange(desc(field_goal_percentage))
+
+ggplot(seth_defenders_stats, aes(x = reorder(DEFENDER, field_goal_percentage), y = field_goal_percentage)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Seth Curry's Field Goal % vs Each Defender", x = "Defender", y = "Field Goal Percentage")
+```
+
+### Worst Shooting Position for Each Player
+```{r}
+worst_positions <- nba %>% 
+  group_by(SHOOTER, RANGE) %>% 
+  summarise(
+    shots_missed = sum(SCORE == "MISSED"),
+    total_shots = n(),
+    miss_percentage = shots_missed / total_shots,
+    .groups = "drop"
+  )
+
+worst_for_each_player <- worst_positions %>% 
+  group_by(SHOOTER) %>% 
+  filter(miss_percentage == max(miss_percentage)) %>% 
+  arrange(SHOOTER)
+
+ggplot(worst_for_each_player, aes(x = SHOOTER, y = miss_percentage, fill = RANGE)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Worst Shooting Position for Each Player", x = "Player", y = "Miss Percentage")
+```
+
+### Shooting Percentages by Range
+```{r}
+range_shooting <- nba %>% 
+  group_by(RANGE) %>% 
+  summarise(
+    shots_made = sum(SCORE == "MADE"),
+    total_shots = n(),
+    shot_percentage = shots_made / total_shots,
+    .groups = "drop"
+  )
+
+ggplot(range_shooting, aes(x = RANGE, y = shot_percentage, fill = "red")) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Shooting Percentage by Range", x = "Range", y = "Shooting Percentage")
+```
+
+### 
+```{r}
+```
